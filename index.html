@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Borsa Savaşçıları</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; user-select: none; }
+        canvas { display: block; background: #4CAF50; margin: 0 auto; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-size: 18px; text-shadow: 2px 2px black; pointer-events: none; }
+        #lobby { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        button { padding: 15px 30px; font-size: 20px; background: #FF5722; color: white; border: none; border-radius: 10px; cursor: pointer; margin: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="lobby">
+        <h1 style="color: white;">Kupa Borsası: Online Arena</h1>
+        <button onclick="startMatch('SOLO')">TEKLİ HESAPLAŞMA</button>
+        <button onclick="startMatch('TEAM')">TAKIMLI SAVAŞ</button>
+    </div>
+
+    <div id="ui" style="display: none;">
+        <div>Kupa Borsası Çarpanı: <span id="market" style="color: #FFEB3B; font-weight: bold;">1.00x</span></div>
+        <div>Durum: <span id="status">Rakip Aranıyor...</span></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let ws;
+        let player = { x: 100, y: 100, size: 20, color: 'blue', speed: 5 };
+        let enemy = { x: -100, y: -100, size: 20, color: 'red' };
+        let joystick = { active: false, startX: 0, startY: 0, curX: 0, curY: 0 };
+        let gameRunning = false;
+
+        function startMatch(mode) {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('ui').style.display = 'block';
+
+            // Localhost yerine Termux IP'ni veya yerel sunucu adresini yazmalısın
+            ws = new WebSocket('ws://localhost:8080'); 
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'JOIN_MATCHMAKING', name: 'UltiZeka', mode: mode }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'MATCH_START') {
+                    document.getElementById('status').innerText = "Maç Başladı! Rakip: " + (data.enemyName || "Bilinmiyor");
+                    gameRunning = true;
+                    gameLoop();
+                }
+                if (data.type === 'MARKET_UPDATE') {
+                    document.getElementById('market').innerText = data.rate + "x";
+                }
+                if (data.type === 'OPPONENT_MOVE') {
+                    enemy.x = data.x;
+                    enemy.y = data.y;
+                }
+            };
+        }
+
+        // Mobil Dokunmatik Kontroller (Joystick)
+        window.addEventListener('touchstart', e => {
+            if (!gameRunning) return;
+            joystick.active = true;
+            joystick.startX = e.touches[0].clientX;
+            joystick.startY = e.touches[0].clientY;
+            joystick.curX = joystick.startX;
+            joystick.curY = joystick.startY;
+        });
+
+        window.addEventListener('touchmove', e => {
+            if (!joystick.active) return;
+            joystick.curX = e.touches[0].clientX;
+            joystick.curY = e.touches[0].clientY;
+
+            let dx = joystick.curX - joystick.startX;
+            let dy = joystick.curY - joystick.startY;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist > 5) {
+                player.x += (dx / dist) * player.speed;
+                player.y += (dy / dist) * player.speed;
+                
+                // Sunucuya yeni pozisyonu uçur
+                if(ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'PLAYER_MOVE', x: player.x, y: player.y }));
+                }
+            }
+        });
+
+        window.addEventListener('touchend', () => { joystick.active = false; });
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Güvenli Bölge Çizgisi (Çalılar vs eklenebilir)
+            ctx.fillStyle = "#81C784";
+            ctx.fillRect(50, 50, canvas.width - 100, canvas.height - 100);
+
+            // Oyuncu Çizimi
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size, 0, Math.PI*2);
+            ctx.fillStyle = player.color;
+            ctx.fill();
+            ctx.closePath();
+
+            // Rakip Çizimi
+            ctx.beginPath();
+            ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI*2);
+            ctx.fillStyle = enemy.color;
+            ctx.fill();
+            ctx.closePath();
+
+            // Sanal Joystick Ekranda Gösterimi
+            if (joystick.active) {
+                ctx.beginPath();
+                ctx.arc(joystick.startX, joystick.startY, 40, 0, Math.PI*2);
+                ctx.fillStyle = "rgba(255,255,255,0.3)";
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(joystick.curX, joystick.curY, 20, 0, Math.PI*2);
+                ctx.fillStyle = "rgba(255,255,255,0.7)";
+                ctx.fill();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>

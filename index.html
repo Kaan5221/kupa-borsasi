@@ -44,7 +44,7 @@
             document.getElementById('ui').style.display = 'block';
 
             // Localhost yerine Termux IP'ni veya yerel sunucu adresini yazmalısın
-            ws = new WebSocket('ws://localhost:8080'); 
+            ws = new WebSocket('ws://192.168.1.1:8080'); 
 
             ws.onopen = () => {
                 ws.send(JSON.stringify({ type: 'JOIN_MATCHMAKING', name: 'UltiZeka', mode: mode }));
